@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Moped Rush</title>
+<style>
+:root{--bg:#f4efe6;--fg:#1d1b18;--card:#fff;--ac:#e8590c;--mu:#6b655c;--bd:#d8d0c2;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17150f;--fg:#f1ebe0;--card:#26231b;--mu:#a39b8b;--bd:#3d382c;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#17150f;--fg:#f1ebe0;--card:#26231b;--mu:#a39b8b;--bd:#3d382c;color-scheme:dark}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--fg);font:15px system-ui,sans-serif;display:flex;justify-content:center;align-items:center}
+#wrap{position:relative;width:min(100%,900px);aspect-ratio:2/1;max-height:100%;background:#000;border-radius:10px;overflow:hidden}
+canvas{width:100%;height:100%;display:block}
+.ov{position:absolute;inset:0;background:color-mix(in srgb,var(--bg) 94%,transparent);overflow:auto;padding:12px;display:none}
+.ov.on{display:block}
+h1{margin:0 0 6px;font-size:22px;color:var(--ac)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+.c{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:8px;flex:1;min-width:150px}
+.c.sel{border-color:var(--ac);border-width:2px}
+button{background:var(--ac);color:#fff;border:0;border-radius:6px;padding:7px 11px;font-weight:600;cursor:pointer}
+button:disabled{opacity:.4;cursor:default}
+button.g{background:var(--card);color:var(--fg);border:1px solid var(--bd)}
+small{color:var(--mu)}
+input{padding:6px;border-radius:6px;border:1px solid var(--bd);background:var(--card);color:var(--fg)}
+#adm{position:absolute;right:6px;top:6px;z-index:5;opacity:.5;padding:3px 8px}
+</style></head><body>
+<div id="wrap">
+<canvas id="cv" width="800" height="400"></canvas>
+<button id="adm" class="g">⚙</button>
+<div class="ov on" id="menu"></div>
+<div class="ov" id="login"><h1>Admin Login</h1><p><input id="pw" type="password" placeholder="Passwort"> <button id="pwok">Rein</button> <button class="g" id="pwx">Zurück</button></p><small id="pwe"></small></div>
+<div class="ov" id="panel"></div>
+</div>
+<script>
+const $=id=>document.getElementById(id),cv=$('cv'),g=cv.getContext('2d');
+const MOP=[{n:"Schwalbe-Opa",m:1,s:1,c:0},{n:"Sparta Classic",m:1.6,s:1.15,c:800},{n:"Café Racer",m:2.8,s:1.3,c:9000},{n:"Turbo-Roller",m:6,s:1.5,c:120000},{n:"Goldenes Moped",m:15,s:1.8,c:2500000}];
+const COL=["#e8590c","#2f9e44","#1c7ed6","#ae3ec9","#f0b400"];
+const UP=[{k:"engine",n:"Motor",d:"+6% Tempo",b:60,mx:60},{k:"fuel",n:"Tank",d:"+2 s Sprit",b:50,mx:60},{k:"jump",n:"Federung",d:"+3% Sprung",b:70,mx:40},{k:"magnet",n:"Magnet",d:"+12 Reichweite",b:90,mx:40},{k:"coin",n:"Münzwert",d:"+10% Münzen",b:120,mx:100}];
+let S={coins:0,best:0,total:0,moped:0,owned:[1,0,0,0,0],up:{engine:0,fuel:0,jump:0,magnet:0,coin:0},runs:0};
+try{const l=JSON.parse(localStorage.getItem('moprush')||'null');if(l)S=Object.assign(S,l)}catch(e){}
+const save=()=>{try{localStorage.setItem('moprush',JSON.stringify(S))}catch(e){}};
+const A={god:false,spd:1,mul:1};
+const cost=u=>Math.floor(UP[u].b*Math.pow(1.3,S.up[UP[u].k]));
+const fmt=n=>n>=1e9?(n/1e9).toFixed(2)+"Mrd":n>=1e6?(n/1e6).toFixed(2)+"Mio":n>=1e4?(n/1e3).toFixed(1)+"k":Math.floor(n);
+function menu(msg){
+ let h=`<h1>🛵 Moped Rush</h1><div>${msg||""}<b>💰 ${fmt(S.coins)}</b> · Rekord ${S.best} m · Fahrten ${S.runs}</div>
+ <div class="row"><button id="go">▶ Losfahren</button></div><b>Mopeds</b><div class="row">`;
+ MOP.forEach((m,i)=>{h+=`<div class="c ${S.moped==i?'sel':''}"><b style="color:${COL[i]}">${m.n}</b><br><small>Münzen x${m.m} · Tempo x${m.s}</small><br>`+(S.owned[i]?`<button data-m="${i}" ${S.moped==i?'disabled':''}>Fahren</button>`:`<button data-b="${i}" ${S.coins<m.c?'disabled':''}>Kaufen ${fmt(m.c)}</button>`)+`</div>`});
+ h+=`</div><b>Upgrades</b><div class="row">`;
+ UP.forEach((u,i)=>{const l=S.up[u.k],mx=l>=u.mx;h+=`<div class="c"><b>${u.n}</b> Lv ${l}/${u.mx}<br><small>${u.d}</small><br><button data-u="${i}" ${mx||S.coins<cost(i)?'disabled':''}>${mx?'MAX':'💰 '+fmt(cost(i))}</button></div>`});
+ h+=`</div><small>Steuerung: Leertaste / Tippen = Springen. Weiche Kegeln und Kisten aus, sammle Münzen und Benzinkanister.</small>`;
+ const el=$('menu');el.innerHTML=h;el.classList.add('on');
+ $('go').onclick=start;
+ el.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{S.moped=+b.dataset.m;save();menu()});
+ el.querySelectorAll('[data-b]').forEach(b=>b.onclick=()=>{const i=+b.dataset.b;if(S.coins>=MOP[i].c){S.coins-=MOP[i].c;S.owned[i]=1;S.moped=i;save();menu()}});
+ el.querySelectorAll('[data-u]').forEach(b=>b.onclick=()=>{const i=+b.dataset.u,c=cost(i);if(S.coins>=c){S.coins-=c;S.up[UP[i].k]++;save();menu()}});
+}
+let R=null,last=0,keyJ=false;
+function start(){
+ $('menu').classList.remove('on');const m=MOP[S.moped],u=S.up;
+ R={x:0,y:0,vy:0,fuelMax:20+u.fuel*2,fuel:20+u.fuel*2,spd:(250+u.engine*15)*m.s*A.spd,ob:[],co:[],fc:[],nx:600,got:0,dead:false,t:0,flash:0,sp:0};
+ R.sp=R.spd;S.runs++;
+}
+const GY=320;
+function jump(){if(!R||R.dead)return;if(R.y>=0){R.vy=-640*(1+S.up.jump*.03);}}
+addEventListener('keydown',e=>{if(e.code=="Space"||e.code=="ArrowUp"){e.preventDefault();jump()}});
+cv.addEventListener('pointerdown',jump);
+function spawn(){
+ const x=R.nx,r=Math.random();
+ if(r<.5)R.ob.push({x,w:22,h:30,t:0});else if(r<.8)R.ob.push({x,w:40,h:40,t:1});else R.ob.push({x,w:70,h:22,t:2});
+ const n=3+Math.floor(Math.random()*4),hy=60+Math.random()*80;
+ for(let i=0;i<n;i++)R.co.push({x:x-90+i*32,y:-hy+Math.abs(i-n/2)*10,c:0});
+ if(Math.random()<.22)R.fc.push({x:x+160,y:-40});
+ R.nx+=(380+Math.random()*320)*(R.spd/300>1?Math.min(R.spd/300,2):1);
+}
+function end(crash){
+ R.dead=true;const m=MOP[S.moped],d=Math.floor(R.x/20);
+ const earn=Math.floor((R.got*(1+S.up.coin*.1)+d/4)*m.m*A.mul);
+ S.coins+=earn;S.total+=earn;if(d>S.best)S.best=d;save();
+ setTimeout(()=>{R=null;menu(`<p><b>${crash?'💥 Crash!':'⛽ Sprit leer!'}</b> ${d} m weit, +${fmt(earn)} Münzen</p>`)},900);
+}
+function upd(dt){
+ if(!R||R.dead){if(R&&R.dead)R.flash+=dt;return}
+ R.t+=dt;if(!A.god)R.fuel-=dt;
+ if(R.fuel<=0){R.fuel=0;R.sp*=Math.pow(.3,dt);if(R.sp<15){end(false);return}}else R.sp=R.spd*(1+Math.min(R.x/60000,.6));
+ R.x+=R.sp*dt;
+ R.vy+=1900*dt;R.y+=R.vy*dt;if(R.y>=0){R.y=0;R.vy=0}
+ while(R.nx<R.x+1400)spawn();
+ const px=R.x,mg=60+S.up.magnet*12;
+ for(const o of R.ob){if(!A.god&&px+28>o.x&&px-28<o.x+o.w&&R.y>-o.h+6){end(true);return}}
+ for(const c of R.co){if(c.c)continue;const dx=c.x-px,dy=c.y-(R.y-26);if(dx*dx+dy*dy<mg*mg*.2+400){c.c=1;R.got++}}
+ for(const f of R.fc){if(f.c)continue;if(Math.abs(f.x-px)<30&&Math.abs(f.y-(R.y-26))<50){f.c=1;R.fuel=Math.min(R.fuelMax,R.fuel+4)}}
+ R.ob=R.ob.filter(o=>o.x>R.x-300);R.co=R.co.filter(c=>c.x>R.x-300&&!c.c);R.fc=R.fc.filter(f=>f.x>R.x-300&&!f.c);
+}
+function wheel(x,y,r,a){g.strokeStyle="#111";g.lineWidth=5;g.beginPath();g.arc(x,y,r,0,7);g.stroke();g.lineWidth=2;g.strokeStyle="#aaa";g.beginPath();g.moveTo(x+Math.cos(a)*r,y+Math.sin(a)*r);g.lineTo(x-Math.cos(a)*r,y-Math.sin(a)*r);g.stroke()}
+function draw(){
+ const ox=R?R.x:performance.now()/4;
+ const gr=g.createLinearGradient(0,0,0,GY);gr.addColorStop(0,"#ffb347");gr.addColorStop(1,"#ffe9b8");g.fillStyle=gr;g.fillRect(0,0,800,400);
+ g.fillStyle="#d98c3f";for(let i=-1;i<6;i++){const x=i*200-(ox*.15)%200;g.beginPath();g.moveTo(x,GY);g.lineTo(x+100,GY-90-(i&1)*30);g.lineTo(x+200,GY);g.fill()}
+ g.fillStyle="#a35a1f";for(let i=-1;i<10;i++){const x=i*110-(ox*.4)%110;g.fillRect(x,GY-50-(i%3)*14,40,50+(i%3)*14)}
+ g.fillStyle="#3a3a40";g.fillRect(0,GY,800,80);g.fillStyle="#eee";for(let i=-1;i<12;i++)g.fillRect(i*80-ox%80,GY+36,40,4);
+ if(!R)return;
+ const cx=-R.x+120;
+ for(const o of R.ob){const x=o.x+cx;g.fillStyle=o.t==0?"#ff6b00":o.t==1?"#8a5a2b":"#c92a2a";if(o.t==0){g.beginPath();g.moveTo(x,GY);g.lineTo(x+o.w/2,GY-o.h);g.lineTo(x+o.w,GY);g.fill()}else{g.fillRect(x,GY-o.h,o.w,o.h);g.fillStyle="#fff";if(o.t==2)for(let i=0;i<3;i++)g.fillRect(x+6+i*22,GY-o.h,10,o.h)}}
+ g.fillStyle="#ffd43b";for(const c of R.co){g.beginPath();g.arc(c.x+cx,GY+c.y,8,0,7);g.fill()}
+ g.fillStyle="#e03131";for(const f of R.fc){g.fillRect(f.x+cx-9,GY+f.y-12,18,24);g.fillStyle="#fff";g.fillText("⛽",f.x+cx-7,GY+f.y+5);g.fillStyle="#e03131"}
+ const y=GY+R.y,a=R.x/14,tilt=R.dead?.4:Math.max(-.3,Math.min(.3,R.vy/2500));
+ g.save();g.translate(120,y-18);g.rotate(tilt);
+ wheel(-26,0,15,a);wheel(26,0,15,a);
+ g.fillStyle=COL[S.moped];g.fillRect(-30,-26,50,12);g.fillRect(14,-44,5,26);g.fillStyle="#222";g.fillRect(-26,-30,24,6);
+ g.fillRect(10,-47,16,4);
+ g.fillStyle="#2b6cb0";g.fillRect(-14,-52,14,26);g.fillStyle="#f5c9a0";g.beginPath();g.arc(-6,-60,8,0,7);g.fill();g.fillStyle="#c92a2a";g.beginPath();g.arc(-6,-62,8,Math.PI,0);g.fill();
+ g.restore();
+ if(R.fuel<=0||R.x>0){g.fillStyle="rgba(120,120,120,.5)";for(let i=0;i<3;i++)g.beginPath(),g.arc(88-i*14,y-10-i*3,5+i*2,0,7),g.fill()}
+ g.fillStyle="rgba(0,0,0,.55)";g.fillRect(8,8,250,52);g.fillStyle="#fff";g.font="bold 14px system-ui";
+ g.fillText(`${Math.floor(R.x/20)} m   🪙 ${R.got}`,16,28);
+ g.fillStyle="#444";g.fillRect(16,38,230,12);g.fillStyle=R.fuel<5?"#e03131":"#40c057";g.fillRect(16,38,230*R.fuel/R.fuelMax,12);
+}
+function loop(t){const dt=Math.min(.05,(t-last)/1000||0);last=t;upd(dt);draw();requestAnimationFrame(loop)}
+// Admin
+const open=id=>{['menu','login','panel'].forEach(x=>$(x).classList.remove('on'));$(id).classList.add('on')};
+$('adm').onclick=()=>{if(R&&!R.dead)return;$('pw').value="";$('pwe').textContent="";open('login')};
+$('pwx').onclick=()=>{open('menu');menu()};
+$('pwok').onclick=()=>{if($('pw').value==="RaphiSparta")adminPanel();else $('pwe').textContent="Falsches Passwort."};
+$('pw').onkeydown=e=>{if(e.key==="Enter")$('pwok').click()};
+function adminPanel(){
+ $('panel').innerHTML=`<h1>🔧 Admin Panel</h1><div class="row">
+ <div class="c"><b>Münzen</b> (jetzt ${fmt(S.coins)})<br><div class="row"><button data-a="c1">+1k</button><button data-a="c2">+100k</button><button data-a="c3">+10Mio</button><button data-a="c4">+1Mrd</button></div></div>
+ <div class="c"><b>Freischalten</b><br><div class="row"><button data-a="own">Alle Mopeds</button><button data-a="max">Alle Upgrades MAX</button></div></div>
+ <div class="c"><b>Cheats</b><br><label><input type="checkbox" id="god" ${A.god?'checked':''}> Unverwundbar</label><br><label>Tempo x<input id="spd" type="number" min=".5" max="5" step=".1" value="${A.spd}" style="width:60px"></label><br><label>Münzen x<input id="mul" type="number" min="1" max="1000" value="${A.mul}" style="width:60px"></label></div>
+ <div class="c"><b>Spielstand</b><br><button data-a="rs" style="background:#c92a2a">Alles zurücksetzen</button></div></div>
+ <button id="back">Zurück zum Spiel</button>`;
+ open('panel');const p=$('panel');
+ p.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>{const a=b.dataset.a;
+  if(a[0]=='c')S.coins+=[1e3,1e5,1e7,1e9][a[1]-1];
+  if(a=='own')S.owned=[1,1,1,1,1];
+  if(a=='max')UP.forEach(u=>S.up[u.k]=u.mx);
+  if(a=='rs'&&confirm('Wirklich alles löschen?')){S={coins:0,best:0,total:0,moped:0,owned:[1,0,0,0,0],up:{engine:0,fuel:0,jump:0,magnet:0,coin:0},runs:0}}
+  save();adminPanel()});
+ $('god').onchange=()=>{A.god=$('god').checked};$('spd').onchange=()=>{A.spd=+$('spd').value||1};$('mul').onchange=()=>{A.mul=+$('mul').value||1};
+ $('back').onclick=()=>{A.god=$('god').checked;A.spd=+$('spd').value||1;A.mul=+$('mul').value||1;open('menu');menu()};
+}
+menu();requestAnimationFrame(loop);
+</script></body></html>
